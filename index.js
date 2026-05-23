@@ -12,9 +12,11 @@ const {
 } = require("discord.js");
 
 const { QuickDB } = require("quick.db");
+const Canvas = require("canvas");
+
 const db = new QuickDB();
 
-const Canvas = require("canvas");
+// ================= CLIENT =================
 
 const client = new Client({
     intents: [
@@ -31,10 +33,15 @@ const client = new Client({
 
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
+const GUILD_ID = process.env.GUILD_ID;
 
 const LEVEL_CHANNEL_ID = process.env.LEVEL_CHANNEL_ID;
 const AUTO_ROLE_ID = process.env.AUTO_ROLE_ID;
 
+// rôle staff pour /addxp et /resetxp
+const STAFF_ROLE_ID = process.env.STAFF_ROLE_ID;
+
+// rôles niveaux
 const levelRoles = {
     1: process.env.ROLE_LEVEL_1,
     5: process.env.ROLE_LEVEL_5,
@@ -50,7 +57,7 @@ const voiceUsers = new Map();
 
 // ================= READY =================
 
-client.once("ready", () => {
+client.once("ready", async () => {
 
     console.log(`
 ╔════════════════════════════╗
@@ -58,22 +65,26 @@ client.once("ready", () => {
 ╚════════════════════════════╝
 `);
 
-    console.log(`✅ Connecté en tant que ${client.user.tag}`);
+    console.log(`✅ ${client.user.tag} connecté`);
 
     client.user.setPresence({
-        activities: [{
-            name: "/rank • /top",
-            type: ActivityType.Playing
-        }],
+        activities: [
+            {
+                name: "/rank • /top",
+                type: ActivityType.Playing
+            }
+        ],
         status: "online"
     });
+
 });
 
 // ================= AUTO ROLE =================
 
 client.on("guildMemberAdd", async (member) => {
 
-    const role = member.guild.roles.cache.get(AUTO_ROLE_ID);
+    const role =
+        member.guild.roles.cache.get(AUTO_ROLE_ID);
 
     if (role) {
         member.roles.add(role).catch(console.error);
@@ -107,6 +118,7 @@ client.on("messageCreate", async (message) => {
     if (message.author.bot) return;
     if (!message.guild) return;
 
+    // anti spam
     if (cooldown.has(message.author.id)) return;
 
     cooldown.add(message.author.id);
@@ -136,6 +148,7 @@ client.on("messageReactionAdd", async (reaction, user) => {
 
 client.on("voiceStateUpdate", async (oldState, newState) => {
 
+    // rejoint vocal
     if (!oldState.channel && newState.channel) {
 
         const interval = setInterval(async () => {
@@ -147,9 +160,11 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
                 return;
             }
 
+            // pas d'xp seul
             if (member.voice.channel.members.size <= 1)
                 return;
 
+            // pas d'xp mute
             if (member.voice.selfMute) return;
 
             await addXP(member, 20);
@@ -159,6 +174,7 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
         voiceUsers.set(newState.id, interval);
     }
 
+    // quitte vocal
     if (oldState.channel && !newState.channel) {
 
         const interval = voiceUsers.get(oldState.id);
@@ -170,15 +186,15 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
     }
 });
 
-// ================= ADD XP =================
+// ================= ADD XP FUNCTION =================
 
 async function addXP(member, amount) {
 
-    const userId = member.id;
-    const guildId = member.guild.id;
+    const xpKey =
+        `xp_${member.guild.id}_${member.id}`;
 
-    const xpKey = `xp_${guildId}_${userId}`;
-    const levelKey = `level_${guildId}_${userId}`;
+    const levelKey =
+        `level_${member.guild.id}_${member.id}`;
 
     let xp = await db.get(xpKey) || 0;
     let level = await db.get(levelKey) || 0;
@@ -187,6 +203,8 @@ async function addXP(member, amount) {
 
     const neededXP = level * 100 + 100;
 
+    // ===== LEVEL UP =====
+
     if (xp >= neededXP) {
 
         level++;
@@ -194,8 +212,7 @@ async function addXP(member, amount) {
 
         await db.set(levelKey, level);
 
-        // ===== ROLE =====
-
+        // rôle niveau
         if (levelRoles[level]) {
 
             const role =
@@ -212,9 +229,11 @@ async function addXP(member, amount) {
         const canvas = Canvas.createCanvas(900, 300);
         const ctx = canvas.getContext("2d");
 
+        // fond
         ctx.fillStyle = "#111827";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+        // gradient
         const gradient =
             ctx.createLinearGradient(0, 0, 900, 0);
 
@@ -224,6 +243,7 @@ async function addXP(member, amount) {
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, 900, 15);
 
+        // avatar
         const avatar = await Canvas.loadImage(
             member.user.displayAvatarURL({
                 extension: "png",
@@ -242,12 +262,14 @@ async function addXP(member, amount) {
 
         ctx.restore();
 
+        // border
         ctx.beginPath();
         ctx.arc(150, 150, 95, 0, Math.PI * 2);
         ctx.strokeStyle = "#5865F2";
         ctx.lineWidth = 8;
         ctx.stroke();
 
+        // username
         ctx.fillStyle = "#ffffff";
         ctx.font = "bold 42px Sans";
 
@@ -257,6 +279,7 @@ async function addXP(member, amount) {
             120
         );
 
+        // level text
         ctx.font = "30px Sans";
         ctx.fillStyle = "#9CA3AF";
 
@@ -266,16 +289,12 @@ async function addXP(member, amount) {
             180
         );
 
+        // progress bar
         ctx.fillStyle = "#374151";
         ctx.fillRect(300, 220, 500, 30);
 
         ctx.fillStyle = "#5865F2";
         ctx.fillRect(300, 220, 500, 30);
-
-        ctx.fillStyle = "#ffffff";
-        ctx.font = "bold 28px Sans";
-
-        ctx.fillText("LEVEL UP", 670, 70);
 
         const attachment = new AttachmentBuilder(
             canvas.toBuffer(),
@@ -292,8 +311,7 @@ async function addXP(member, amount) {
                 .setDescription(
                     `🚀 ${member} vient de passer niveau ${level} !`
                 )
-                .setImage("attachment://levelup.png")
-                .setTimestamp();
+                .setImage("attachment://levelup.png");
 
             levelChannel.send({
                 embeds: [embed],
@@ -302,6 +320,7 @@ async function addXP(member, amount) {
         }
     }
 
+    await db.set(levelKey, level);
     await db.set(xpKey, xp);
 }
 
@@ -310,14 +329,50 @@ async function addXP(member, amount) {
 const commands = [
 
     new SlashCommandBuilder()
+        .setName("rank")
+        .setDescription("Voir ton niveau"),
+
+    new SlashCommandBuilder()
         .setName("top")
         .setDescription("Voir le classement XP"),
 
     new SlashCommandBuilder()
-        .setName("rank")
-        .setDescription("Voir ton niveau")
+        .setName("ping")
+        .setDescription("Voir le ping du bot"),
+
+    new SlashCommandBuilder()
+        .setName("help")
+        .setDescription("Voir les commandes"),
+
+    new SlashCommandBuilder()
+        .setName("addxp")
+        .setDescription("Ajouter de l'xp")
+        .addUserOption(option =>
+            option
+                .setName("membre")
+                .setDescription("Le membre")
+                .setRequired(true)
+        )
+        .addIntegerOption(option =>
+            option
+                .setName("xp")
+                .setDescription("Nombre d'xp")
+                .setRequired(true)
+        ),
+
+    new SlashCommandBuilder()
+        .setName("resetxp")
+        .setDescription("Reset l'xp d'un membre")
+        .addUserOption(option =>
+            option
+                .setName("membre")
+                .setDescription("Le membre")
+                .setRequired(true)
+        )
 
 ].map(command => command.toJSON());
+
+// ================= REGISTER =================
 
 const rest = new REST({ version: "10" })
     .setToken(TOKEN);
@@ -329,7 +384,10 @@ const rest = new REST({ version: "10" })
         console.log("⌛ Chargement des commandes...");
 
         await rest.put(
-            Routes.applicationCommands(CLIENT_ID),
+            Routes.applicationGuildCommands(
+                CLIENT_ID,
+                GUILD_ID
+            ),
             { body: commands }
         );
 
@@ -346,50 +404,6 @@ const rest = new REST({ version: "10" })
 client.on("interactionCreate", async (interaction) => {
 
     if (!interaction.isChatInputCommand()) return;
-
-    // ===== TOP =====
-
-    if (interaction.commandName === "top") {
-
-        const all = await db.all();
-
-        const xpData = all
-            .filter(data =>
-                data.id.startsWith(
-                    `xp_${interaction.guild.id}`
-                )
-            )
-            .sort((a, b) => b.value - a.value)
-            .slice(0, 10);
-
-        let leaderboard = "";
-
-        for (let i = 0; i < xpData.length; i++) {
-
-            const data = xpData[i];
-
-            const userId = data.id.split("_")[2];
-
-            const user =
-                await client.users.fetch(userId)
-                    .catch(() => null);
-
-            if (!user) continue;
-
-            leaderboard +=
-                `🏅 **#${i + 1}** • ${user.username} — ${data.value} XP\n`;
-        }
-
-        const embed = new EmbedBuilder()
-            .setColor("#5865F2")
-            .setTitle("🏆 Classement XP")
-            .setDescription(leaderboard)
-            .setTimestamp();
-
-        interaction.reply({
-            embeds: [embed]
-        });
-    }
 
     // ===== RANK =====
 
@@ -424,13 +438,155 @@ client.on("interactionCreate", async (interaction) => {
                     value: `${xp}/${neededXP}`,
                     inline: true
                 }
-            )
-            .setTimestamp();
+            );
 
         interaction.reply({
             embeds: [embed]
         });
     }
+
+    // ===== TOP =====
+
+    if (interaction.commandName === "top") {
+
+        const all = await db.all();
+
+        const xpData = all
+            .filter(data =>
+                data.id.startsWith(
+                    `xp_${interaction.guild.id}`
+                )
+            )
+            .sort((a, b) => b.value - a.value)
+            .slice(0, 10);
+
+        let leaderboard = "";
+
+        for (let i = 0; i < xpData.length; i++) {
+
+            const data = xpData[i];
+
+            const userId = data.id.split("_")[2];
+
+            const user =
+                await client.users.fetch(userId)
+                    .catch(() => null);
+
+            if (!user) continue;
+
+            leaderboard +=
+                `🏅 #${i + 1} • ${user.username} — ${data.value} XP\n`;
+        }
+
+        const embed = new EmbedBuilder()
+            .setColor("#5865F2")
+            .setTitle("🏆 Classement XP")
+            .setDescription(leaderboard);
+
+        interaction.reply({
+            embeds: [embed]
+        });
+    }
+
+    // ===== PING =====
+
+    if (interaction.commandName === "ping") {
+
+        interaction.reply({
+            content:
+                `🏓 Pong : ${client.ws.ping}ms`
+        });
+    }
+
+    // ===== HELP =====
+
+    if (interaction.commandName === "help") {
+
+        const embed = new EmbedBuilder()
+            .setColor("#5865F2")
+            .setTitle("📚 Commandes")
+            .setDescription(`
+\`/rank\` → Voir ton niveau
+\`/top\` → Classement XP
+\`/ping\` → Voir le ping
+\`/help\` → Voir les commandes
+\`/addxp\` → Ajouter de l'xp
+\`/resetxp\` → Reset l'xp
+            `);
+
+        interaction.reply({
+            embeds: [embed]
+        });
+    }
+
+    // ===== ADDXP =====
+
+    if (interaction.commandName === "addxp") {
+
+        if (
+            !interaction.member.roles.cache.has(STAFF_ROLE_ID)
+        ) {
+            return interaction.reply({
+                content:
+                    "❌ Tu n'as pas la permission.",
+                ephemeral: true
+            });
+        }
+
+        const member =
+            interaction.options.getMember("membre");
+
+        const amount =
+            interaction.options.getInteger("xp");
+
+        const xpKey =
+            `xp_${interaction.guild.id}_${member.id}`;
+
+        let xp = await db.get(xpKey) || 0;
+
+        xp += amount;
+
+        await db.set(xpKey, xp);
+
+        interaction.reply({
+            content:
+                `✅ ${amount} XP ajouté à ${member}`
+        });
+    }
+
+    // ===== RESETXP =====
+
+    if (interaction.commandName === "resetxp") {
+
+        if (
+            !interaction.member.roles.cache.has(STAFF_ROLE_ID)
+        ) {
+            return interaction.reply({
+                content:
+                    "❌ Tu n'as pas la permission.",
+                ephemeral: true
+            });
+        }
+
+        const member =
+            interaction.options.getMember("membre");
+
+        await db.set(
+            `xp_${interaction.guild.id}_${member.id}`,
+            0
+        );
+
+        await db.set(
+            `level_${interaction.guild.id}_${member.id}`,
+            0
+        );
+
+        interaction.reply({
+            content:
+                `✅ XP reset pour ${member}`
+        });
+    }
+
 });
 
 // ================= LOGIN =================

@@ -35,13 +35,17 @@ const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID;
 
-const LEVEL_CHANNEL_ID = process.env.LEVEL_CHANNEL_ID;
-const AUTO_ROLE_ID = process.env.AUTO_ROLE_ID;
+const LEVEL_CHANNEL_ID =
+    process.env.LEVEL_CHANNEL_ID;
 
-// rôle staff pour /addxp et /resetxp
-const STAFF_ROLE_ID = process.env.STAFF_ROLE_ID;
+const AUTO_ROLE_ID =
+    process.env.AUTO_ROLE_ID;
 
-// rôles niveaux
+const STAFF_ROLE_ID =
+    process.env.STAFF_ROLE_ID;
+
+// ================= LEVEL ROLES =================
+
 const levelRoles = {
     1: process.env.ROLE_LEVEL_1,
     5: process.env.ROLE_LEVEL_5,
@@ -57,7 +61,7 @@ const voiceUsers = new Map();
 
 // ================= READY =================
 
-client.once("ready", async () => {
+client.once("clientReady", async () => {
 
     console.log(`
 ╔════════════════════════════╗
@@ -84,14 +88,19 @@ client.once("ready", async () => {
 client.on("guildMemberAdd", async (member) => {
 
     const role =
-        member.guild.roles.cache.get(AUTO_ROLE_ID);
+        member.guild.roles.cache.get(
+            AUTO_ROLE_ID
+        );
 
     if (role) {
-        member.roles.add(role).catch(console.error);
+        member.roles.add(role)
+            .catch(console.error);
     }
 
     const channel =
-        member.guild.channels.cache.get(LEVEL_CHANNEL_ID);
+        member.guild.channels.cache.get(
+            LEVEL_CHANNEL_ID
+        );
 
     if (channel) {
 
@@ -119,7 +128,8 @@ client.on("messageCreate", async (message) => {
     if (!message.guild) return;
 
     // anti spam
-    if (cooldown.has(message.author.id)) return;
+    if (cooldown.has(message.author.id))
+        return;
 
     cooldown.add(message.author.id);
 
@@ -132,61 +142,110 @@ client.on("messageCreate", async (message) => {
 
 // ================= REACTION XP =================
 
-client.on("messageReactionAdd", async (reaction, user) => {
+client.on(
+    "messageReactionAdd",
+    async (reaction, user) => {
 
-    if (user.bot) return;
+        if (user.bot) return;
 
-    const member =
-        reaction.message.guild.members.cache.get(user.id);
+        const member =
+            reaction.message.guild.members.cache.get(
+                user.id
+            );
 
-    if (!member) return;
+        if (!member) return;
 
-    await addXP(member, 5);
-});
+        await addXP(member, 5);
+    }
+);
 
 // ================= VOICE XP =================
 
-client.on("voiceStateUpdate", async (oldState, newState) => {
+client.on(
+    "voiceStateUpdate",
+    async (oldState, newState) => {
 
-    // rejoint vocal
-    if (!oldState.channel && newState.channel) {
+        // rejoint vocal
+        if (
+            !oldState.channel &&
+            newState.channel
+        ) {
 
-        const interval = setInterval(async () => {
+            const interval =
+                setInterval(async () => {
 
-            const member = newState.member;
+                    const member =
+                        newState.member;
 
-            if (!member.voice.channel) {
+                    if (
+                        !member.voice.channel
+                    ) {
+
+                        clearInterval(interval);
+
+                        return;
+                    }
+
+                    // pas seul
+                    if (
+                        member.voice.channel.members.size <= 1
+                    ) return;
+
+                    // mute
+                    if (
+                        member.voice.selfMute
+                    ) return;
+
+                    await addXP(
+                        member,
+                        20
+                    );
+
+                }, 5 * 60 * 1000);
+
+            voiceUsers.set(
+                newState.id,
+                interval
+            );
+        }
+
+        // quitte vocal
+        if (
+            oldState.channel &&
+            !newState.channel
+        ) {
+
+            const interval =
+                voiceUsers.get(
+                    oldState.id
+                );
+
+            if (interval) {
+
                 clearInterval(interval);
-                return;
+
+                voiceUsers.delete(
+                    oldState.id
+                );
             }
-
-            // pas d'xp seul
-            if (member.voice.channel.members.size <= 1)
-                return;
-
-            // pas d'xp mute
-            if (member.voice.selfMute) return;
-
-            await addXP(member, 20);
-
-        }, 5 * 60 * 1000);
-
-        voiceUsers.set(newState.id, interval);
-    }
-
-    // quitte vocal
-    if (oldState.channel && !newState.channel) {
-
-        const interval = voiceUsers.get(oldState.id);
-
-        if (interval) {
-            clearInterval(interval);
-            voiceUsers.delete(oldState.id);
         }
     }
-});
+);
 
-// ================= ADD XP FUNCTION =================
+// ================= CALCUL LEVEL =================
+
+function calculateLevel(xp) {
+
+    if (xp >= 3000) return 30;
+    if (xp >= 2000) return 20;
+    if (xp >= 1000) return 10;
+    if (xp >= 500) return 5;
+    if (xp >= 100) return 1;
+
+    return 0;
+}
+
+// ================= ADD XP =================
 
 async function addXP(member, amount) {
 
@@ -196,132 +255,237 @@ async function addXP(member, amount) {
     const levelKey =
         `level_${member.guild.id}_${member.id}`;
 
-    let xp = await db.get(xpKey) || 0;
-    let level = await db.get(levelKey) || 0;
+    let xp =
+        await db.get(xpKey) || 0;
 
+    let oldLevel =
+        await db.get(levelKey) || 0;
+
+    // ajoute xp
     xp += amount;
 
-    const neededXP = level * 100 + 100;
+    // save xp
+    await db.set(xpKey, xp);
 
-    // ===== LEVEL UP =====
+    // nouveau niveau
+    const newLevel =
+        calculateLevel(xp);
 
-    if (xp >= neededXP) {
+    // ================= LEVEL UP =================
 
-        level++;
-        xp = 0;
+    if (newLevel > oldLevel) {
 
-        await db.set(levelKey, level);
+        await db.set(
+            levelKey,
+            newLevel
+        );
 
-        // rôle niveau
-        if (levelRoles[level]) {
+        // ===== ROLE =====
+
+        if (levelRoles[newLevel]) {
 
             const role =
-                member.guild.roles.cache.get(levelRoles[level]);
+                member.guild.roles.cache.get(
+                    levelRoles[newLevel]
+                );
 
             if (role) {
-                await member.roles.add(role)
-                    .catch(console.error);
+
+                try {
+                    await member.roles.add(role);
+                } catch (err) {
+                    console.log(err);
+                }
             }
         }
 
-        // ===== LEVEL CARD =====
+        // ================= CARD =================
 
-        const canvas = Canvas.createCanvas(900, 300);
-        const ctx = canvas.getContext("2d");
+        try {
 
-        // fond
-        ctx.fillStyle = "#111827";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+            const canvas =
+                Canvas.createCanvas(
+                    900,
+                    300
+                );
 
-        // gradient
-        const gradient =
-            ctx.createLinearGradient(0, 0, 900, 0);
+            const ctx =
+                canvas.getContext("2d");
 
-        gradient.addColorStop(0, "#5865F2");
-        gradient.addColorStop(1, "#8B5CF6");
+            // fond
+            ctx.fillStyle =
+                "#111827";
 
-        ctx.fillStyle = gradient;
-        ctx.fillRect(0, 0, 900, 15);
+            ctx.fillRect(
+                0,
+                0,
+                canvas.width,
+                canvas.height
+            );
 
-        // avatar
-        const avatar = await Canvas.loadImage(
-            member.user.displayAvatarURL({
-                extension: "png",
-                size: 256
-            })
-        );
+            // gradient
+            const gradient =
+                ctx.createLinearGradient(
+                    0,
+                    0,
+                    900,
+                    0
+                );
 
-        ctx.save();
+            gradient.addColorStop(
+                0,
+                "#5865F2"
+            );
 
-        ctx.beginPath();
-        ctx.arc(150, 150, 90, 0, Math.PI * 2);
-        ctx.closePath();
-        ctx.clip();
+            gradient.addColorStop(
+                1,
+                "#8B5CF6"
+            );
 
-        ctx.drawImage(avatar, 60, 60, 180, 180);
+            ctx.fillStyle =
+                gradient;
 
-        ctx.restore();
+            ctx.fillRect(
+                0,
+                0,
+                900,
+                15
+            );
 
-        // border
-        ctx.beginPath();
-        ctx.arc(150, 150, 95, 0, Math.PI * 2);
-        ctx.strokeStyle = "#5865F2";
-        ctx.lineWidth = 8;
-        ctx.stroke();
+            // avatar
+            const avatar =
+                await Canvas.loadImage(
+                    member.user.displayAvatarURL({
+                        extension: "png",
+                        size: 256
+                    })
+                );
 
-        // username
-        ctx.fillStyle = "#ffffff";
-        ctx.font = "bold 42px Sans";
+            ctx.save();
 
-        ctx.fillText(
-            member.user.username,
-            300,
-            120
-        );
+            ctx.beginPath();
 
-        // level text
-        ctx.font = "30px Sans";
-        ctx.fillStyle = "#9CA3AF";
+            ctx.arc(
+                150,
+                150,
+                90,
+                0,
+                Math.PI * 2
+            );
 
-        ctx.fillText(
-            `🎉 Niveau ${level} atteint !`,
-            300,
-            180
-        );
+            ctx.closePath();
 
-        // progress bar
-        ctx.fillStyle = "#374151";
-        ctx.fillRect(300, 220, 500, 30);
+            ctx.clip();
 
-        ctx.fillStyle = "#5865F2";
-        ctx.fillRect(300, 220, 500, 30);
+            ctx.drawImage(
+                avatar,
+                60,
+                60,
+                180,
+                180
+            );
 
-        const attachment = new AttachmentBuilder(
-            canvas.toBuffer(),
-            { name: "levelup.png" }
-        );
+            ctx.restore();
 
-        const levelChannel =
-            member.guild.channels.cache.get(LEVEL_CHANNEL_ID);
+            // border
+            ctx.beginPath();
 
-        if (levelChannel) {
+            ctx.arc(
+                150,
+                150,
+                95,
+                0,
+                Math.PI * 2
+            );
 
-            const embed = new EmbedBuilder()
-                .setColor("#5865F2")
-                .setDescription(
-                    `🚀 ${member} vient de passer niveau ${level} !`
-                )
-                .setImage("attachment://levelup.png");
+            ctx.strokeStyle =
+                "#5865F2";
 
-            levelChannel.send({
-                embeds: [embed],
-                files: [attachment]
-            });
+            ctx.lineWidth = 8;
+
+            ctx.stroke();
+
+            // username
+            ctx.fillStyle =
+                "#ffffff";
+
+            ctx.font =
+                "bold 42px Sans";
+
+            ctx.fillText(
+                member.user.username,
+                300,
+                120
+            );
+
+            // level
+            ctx.fillStyle =
+                "#9CA3AF";
+
+            ctx.font =
+                "30px Sans";
+
+            ctx.fillText(
+                `🎉 Niveau ${newLevel} atteint !`,
+                300,
+                180
+            );
+
+            // xp
+            ctx.fillStyle =
+                "#ffffff";
+
+            ctx.font =
+                "24px Sans";
+
+            ctx.fillText(
+                `${xp} XP`,
+                300,
+                230
+            );
+
+            const attachment =
+                new AttachmentBuilder(
+                    canvas.toBuffer(),
+                    {
+                        name:
+                            "levelup.png"
+                    }
+                );
+
+            const levelChannel =
+                member.guild.channels.cache.get(
+                    LEVEL_CHANNEL_ID
+                );
+
+            if (levelChannel) {
+
+                const embed =
+                    new EmbedBuilder()
+                        .setColor(
+                            "#5865F2"
+                        )
+                        .setDescription(
+                            `🚀 ${member} vient de passer niveau ${newLevel} !`
+                        )
+                        .setImage(
+                            "attachment://levelup.png"
+                        );
+
+                levelChannel.send({
+                    embeds: [embed],
+                    files: [attachment]
+                });
+            }
+
+        } catch (err) {
+
+            console.log(
+                "Erreur Canvas:",
+                err
+            );
         }
     }
-
-    await db.set(levelKey, level);
-    await db.set(xpKey, xp);
 }
 
 // ================= COMMANDES =================
@@ -330,58 +494,81 @@ const commands = [
 
     new SlashCommandBuilder()
         .setName("rank")
-        .setDescription("Voir ton niveau"),
+        .setDescription(
+            "Voir ton niveau"
+        ),
 
     new SlashCommandBuilder()
         .setName("top")
-        .setDescription("Voir le classement XP"),
+        .setDescription(
+            "Voir le classement XP"
+        ),
 
     new SlashCommandBuilder()
         .setName("ping")
-        .setDescription("Voir le ping du bot"),
+        .setDescription(
+            "Voir le ping du bot"
+        ),
 
     new SlashCommandBuilder()
         .setName("help")
-        .setDescription("Voir les commandes"),
+        .setDescription(
+            "Voir les commandes"
+        ),
 
     new SlashCommandBuilder()
         .setName("addxp")
-        .setDescription("Ajouter de l'xp")
+        .setDescription(
+            "Ajouter de l'xp"
+        )
         .addUserOption(option =>
             option
                 .setName("membre")
-                .setDescription("Le membre")
+                .setDescription(
+                    "Le membre"
+                )
                 .setRequired(true)
         )
         .addIntegerOption(option =>
             option
                 .setName("xp")
-                .setDescription("Nombre d'xp")
+                .setDescription(
+                    "Nombre d'xp"
+                )
                 .setRequired(true)
         ),
 
     new SlashCommandBuilder()
         .setName("resetxp")
-        .setDescription("Reset l'xp d'un membre")
+        .setDescription(
+            "Reset l'xp"
+        )
         .addUserOption(option =>
             option
                 .setName("membre")
-                .setDescription("Le membre")
+                .setDescription(
+                    "Le membre"
+                )
                 .setRequired(true)
         )
 
-].map(command => command.toJSON());
+].map(command =>
+    command.toJSON()
+);
 
 // ================= REGISTER =================
 
-const rest = new REST({ version: "10" })
-    .setToken(TOKEN);
+const rest =
+    new REST({ version: "10" })
+        .setToken(TOKEN);
 
 (async () => {
 
     try {
 
-        console.log("⌛ Chargement des commandes...");
+        console.log(
+            "⌛ Chargement des commandes..."
+        );
 
         await rest.put(
             Routes.applicationGuildCommands(
@@ -391,7 +578,9 @@ const rest = new REST({ version: "10" })
             { body: commands }
         );
 
-        console.log("✅ Commandes chargées");
+        console.log(
+            "✅ Commandes chargées"
+        );
 
     } catch (error) {
         console.error(error);
@@ -401,193 +590,267 @@ const rest = new REST({ version: "10" })
 
 // ================= INTERACTIONS =================
 
-client.on("interactionCreate", async (interaction) => {
+client.on(
+    "interactionCreate",
+    async (interaction) => {
 
-    if (!interaction.isChatInputCommand()) return;
+        if (
+            !interaction.isChatInputCommand()
+        ) return;
 
-    // ===== RANK =====
+        // ================= RANK =================
 
-    if (interaction.commandName === "rank") {
+        if (
+            interaction.commandName ===
+            "rank"
+        ) {
 
-        const xp =
-            await db.get(
-                `xp_${interaction.guild.id}_${interaction.user.id}`
-            ) || 0;
+            const xp =
+                await db.get(
+                    `xp_${interaction.guild.id}_${interaction.user.id}`
+                ) || 0;
 
-        const level =
-            await db.get(
-                `level_${interaction.guild.id}_${interaction.user.id}`
-            ) || 0;
+            const level =
+                await db.get(
+                    `level_${interaction.guild.id}_${interaction.user.id}`
+                ) || 0;
 
-        const neededXP = level * 100 + 100;
+            const embed =
+                new EmbedBuilder()
+                    .setColor(
+                        "#5865F2"
+                    )
+                    .setTitle(
+                        `📊 ${interaction.user.username}`
+                    )
+                    .setThumbnail(
+                        interaction.user.displayAvatarURL()
+                    )
+                    .addFields(
+                        {
+                            name:
+                                "⭐ Niveau",
+                            value:
+                                `${level}`,
+                            inline: true
+                        },
+                        {
+                            name:
+                                "✨ XP",
+                            value:
+                                `${xp}`,
+                            inline: true
+                        }
+                    );
 
-        const embed = new EmbedBuilder()
-            .setColor("#5865F2")
-            .setTitle(`📊 ${interaction.user.username}`)
-            .setThumbnail(
-                interaction.user.displayAvatarURL()
-            )
-            .addFields(
-                {
-                    name: "⭐ Niveau",
-                    value: `${level}`,
-                    inline: true
-                },
-                {
-                    name: "✨ XP",
-                    value: `${xp}/${neededXP}`,
-                    inline: true
-                }
-            );
-
-        interaction.reply({
-            embeds: [embed]
-        });
-    }
-
-    // ===== TOP =====
-
-    if (interaction.commandName === "top") {
-
-        const all = await db.all();
-
-        const xpData = all
-            .filter(data =>
-                data.id.startsWith(
-                    `xp_${interaction.guild.id}`
-                )
-            )
-            .sort((a, b) => b.value - a.value)
-            .slice(0, 10);
-
-        let leaderboard = "";
-
-        for (let i = 0; i < xpData.length; i++) {
-
-            const data = xpData[i];
-
-            const userId = data.id.split("_")[2];
-
-            const user =
-                await client.users.fetch(userId)
-                    .catch(() => null);
-
-            if (!user) continue;
-
-            leaderboard +=
-                `🏅 #${i + 1} • ${user.username} — ${data.value} XP\n`;
+            interaction.reply({
+                embeds: [embed]
+            });
         }
 
-        const embed = new EmbedBuilder()
-            .setColor("#5865F2")
-            .setTitle("🏆 Classement XP")
-            .setDescription(leaderboard);
+        // ================= TOP =================
 
-        interaction.reply({
-            embeds: [embed]
-        });
-    }
+        if (
+            interaction.commandName ===
+            "top"
+        ) {
 
-    // ===== PING =====
+            const all =
+                await db.all();
 
-    if (interaction.commandName === "ping") {
+            const xpData = all
+                .filter(data =>
+                    data.id.startsWith(
+                        `xp_${interaction.guild.id}`
+                    )
+                )
+                .sort(
+                    (a, b) =>
+                        b.value -
+                        a.value
+                )
+                .slice(0, 10);
 
-        interaction.reply({
-            content:
-                `🏓 Pong : ${client.ws.ping}ms`
-        });
-    }
+            let leaderboard = "";
 
-    // ===== HELP =====
+            for (
+                let i = 0;
+                i < xpData.length;
+                i++
+            ) {
 
-    if (interaction.commandName === "help") {
+                const data =
+                    xpData[i];
 
-        const embed = new EmbedBuilder()
-            .setColor("#5865F2")
-            .setTitle("📚 Commandes")
-            .setDescription(`
+                const userId =
+                    data.id.split(
+                        "_"
+                    )[2];
+
+                const user =
+                    await client.users.fetch(
+                        userId
+                    )
+                        .catch(
+                            () => null
+                        );
+
+                if (!user)
+                    continue;
+
+                leaderboard +=
+                    `🏅 #${i + 1} • ${user.username} — ${data.value} XP\n`;
+            }
+
+            // vide
+            if (!leaderboard) {
+
+                leaderboard =
+                    "❌ Aucun joueur dans le classement.";
+            }
+
+            const embed =
+                new EmbedBuilder()
+                    .setColor(
+                        "#5865F2"
+                    )
+                    .setTitle(
+                        "🏆 Classement XP"
+                    )
+                    .setDescription(
+                        leaderboard
+                    );
+
+            interaction.reply({
+                embeds: [embed]
+            });
+        }
+
+        // ================= PING =================
+
+        if (
+            interaction.commandName ===
+            "ping"
+        ) {
+
+            interaction.reply({
+                content:
+                    `🏓 Pong : ${client.ws.ping}ms`
+            });
+        }
+
+        // ================= HELP =================
+
+        if (
+            interaction.commandName ===
+            "help"
+        ) {
+
+            const embed =
+                new EmbedBuilder()
+                    .setColor(
+                        "#5865F2"
+                    )
+                    .setTitle(
+                        "📚 Commandes"
+                    )
+                    .setDescription(`
 \`/rank\` → Voir ton niveau
 \`/top\` → Classement XP
 \`/ping\` → Voir le ping
 \`/help\` → Voir les commandes
 \`/addxp\` → Ajouter de l'xp
 \`/resetxp\` → Reset l'xp
-            `);
+                    `);
 
-        interaction.reply({
-            embeds: [embed]
-        });
-    }
-
-    // ===== ADDXP =====
-
-    if (interaction.commandName === "addxp") {
-
-        if (
-            !interaction.member.roles.cache.has(STAFF_ROLE_ID)
-        ) {
-            return interaction.reply({
-                content:
-                    "❌ Tu n'as pas la permission.",
-                ephemeral: true
+            interaction.reply({
+                embeds: [embed]
             });
         }
 
-        const member =
-            interaction.options.getMember("membre");
-
-        const amount =
-            interaction.options.getInteger("xp");
-
-        const xpKey =
-            `xp_${interaction.guild.id}_${member.id}`;
-
-        let xp = await db.get(xpKey) || 0;
-
-        xp += amount;
-
-        await db.set(xpKey, xp);
-
-        interaction.reply({
-            content:
-                `✅ ${amount} XP ajouté à ${member}`
-        });
-    }
-
-    // ===== RESETXP =====
-
-    if (interaction.commandName === "resetxp") {
+        // ================= ADDXP =================
 
         if (
-            !interaction.member.roles.cache.has(STAFF_ROLE_ID)
+            interaction.commandName ===
+            "addxp"
         ) {
-            return interaction.reply({
+
+            if (
+                !interaction.member.roles.cache.has(
+                    STAFF_ROLE_ID
+                )
+            ) {
+
+                return interaction.reply({
+                    content:
+                        "❌ Tu n'as pas la permission.",
+                    ephemeral: true
+                });
+            }
+
+            const member =
+                interaction.options.getMember(
+                    "membre"
+                );
+
+            const amount =
+                interaction.options.getInteger(
+                    "xp"
+                );
+
+            await addXP(
+                member,
+                amount
+            );
+
+            interaction.reply({
                 content:
-                    "❌ Tu n'as pas la permission.",
-                ephemeral: true
+                    `✅ ${amount} XP ajouté à ${member}`
             });
         }
 
-        const member =
-            interaction.options.getMember("membre");
+        // ================= RESETXP =================
 
-        await db.set(
-            `xp_${interaction.guild.id}_${member.id}`,
-            0
-        );
+        if (
+            interaction.commandName ===
+            "resetxp"
+        ) {
 
-        await db.set(
-            `level_${interaction.guild.id}_${member.id}`,
-            0
-        );
+            if (
+                !interaction.member.roles.cache.has(
+                    STAFF_ROLE_ID
+                )
+            ) {
 
-        interaction.reply({
-            content:
-                `✅ XP reset pour ${member}`
-        });
+                return interaction.reply({
+                    content:
+                        "❌ Tu n'as pas la permission.",
+                    ephemeral: true
+                });
+            }
+
+            const member =
+                interaction.options.getMember(
+                    "membre"
+                );
+
+            await db.set(
+                `xp_${interaction.guild.id}_${member.id}`,
+                0
+            );
+
+            await db.set(
+                `level_${interaction.guild.id}_${member.id}`,
+                0
+            );
+
+            interaction.reply({
+                content:
+                    `✅ XP reset pour ${member}`
+            });
+        }
     }
-
-});
+);
 
 // ================= LOGIN =================
 

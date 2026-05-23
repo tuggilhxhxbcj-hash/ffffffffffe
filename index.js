@@ -157,7 +157,7 @@ client.on(
         if (!member) return;
 
         // 10 XP réaction
-        await addXP(member, 10);
+        await addXP(member, 5);
     }
 );
 
@@ -195,7 +195,7 @@ client.on(
 
                     await addXP(
                         member,
-                        50
+                        5
                     );
 
                 }, 1 * 60 * 1000);
@@ -233,11 +233,11 @@ client.on(
 
 function calculateLevel(xp) {
 
-    if (xp >= 3000) return 30;
-    if (xp >= 2000) return 20;
-    if (xp >= 1000) return 10;
-    if (xp >= 500) return 5;
-    if (xp >= 100) return 1;
+    if (xp >= 30000) return 30;
+    if (xp >= 20000) return 20;
+    if (xp >= 10000) return 10;
+    if (xp >= 5000) return 5;
+    if (xp >= 1000) return 1;
 
     return 0;
 }

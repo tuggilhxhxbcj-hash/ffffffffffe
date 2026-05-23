@@ -3,7 +3,6 @@ require("dotenv").config();
 const {
     Client,
     GatewayIntentBits,
-    AttachmentBuilder,
     EmbedBuilder,
     REST,
     Routes,
@@ -12,8 +11,6 @@ const {
 } = require("discord.js");
 
 const { QuickDB } = require("quick.db");
-const Canvas = require("canvas");
-
 const db = new QuickDB();
 
 // ================= CLIENT =================
@@ -213,7 +210,6 @@ client.on(
     "voiceStateUpdate",
     async (oldState, newState) => {
 
-        // rejoint vocal
         if (
             !oldState.channel &&
             newState.channel
@@ -225,7 +221,6 @@ client.on(
                     const member =
                         newState.member;
 
-                    // quitté vocal
                     if (
                         !member.voice.channel
                     ) {
@@ -235,18 +230,15 @@ client.on(
                         return;
                     }
 
-                    // seul dans vocal
                     if (
                         member.voice.channel.members.size <= 1
                     ) return;
 
-                    // salon afk
                     if (
                         member.voice.channel.id ===
                         member.guild.afkChannelId
                     ) return;
 
-                    // AJOUT XP
                     await addXP(
                         member,
                         20
@@ -260,7 +252,6 @@ client.on(
             );
         }
 
-        // quitte vocal
         if (
             oldState.channel &&
             !newState.channel
@@ -478,6 +469,353 @@ const rest =
 
 })();
 
+// ================= INTERACTIONS =================
+
+client.on("interactionCreate", async (interaction) => {
+
+    if (!interaction.isChatInputCommand()) return;
+
+    // ===== PING =====
+
+    if (interaction.commandName === "ping") {
+
+        return interaction.reply({
+            embeds: [
+                new EmbedBuilder()
+                    .setColor("#5865F2")
+                    .setTitle("🏓 Pong")
+                    .setDescription(
+                        `Ping : ${client.ws.ping}ms`
+                    )
+            ]
+        });
+    }
+
+    // ===== HELP =====
+
+    if (interaction.commandName === "help") {
+
+        return interaction.reply({
+            embeds: [
+                new EmbedBuilder()
+                    .setColor("#5865F2")
+                    .setTitle("📖 Commandes")
+                    .setDescription(`
+/rank
+/top
+/ping
+/help
+
+👑 Staff :
+/addxp
+/resetxp
+/giveaway
+/giveawayxp
+`)
+            ]
+        });
+    }
+
+    // ===== RANK =====
+
+    if (interaction.commandName === "rank") {
+
+        const xp =
+            await db.get(
+                `xp_${interaction.guild.id}_${interaction.user.id}`
+            ) || 0;
+
+        const level =
+            await db.get(
+                `level_${interaction.guild.id}_${interaction.user.id}`
+            ) || 0;
+
+        const embed =
+            new EmbedBuilder()
+                .setColor("#5865F2")
+                .setTitle(`📊 Niveau de ${interaction.user.username}`)
+                .setDescription(`
+⭐ Niveau : ${level}
+✨ XP : ${xp}
+`);
+
+        return interaction.reply({
+            embeds: [embed]
+        });
+    }
+
+    // ===== TOP =====
+
+    if (interaction.commandName === "top") {
+
+        const all =
+            await db.all();
+
+        const xpUsers =
+            all.filter(data =>
+                data.id.startsWith(
+                    `xp_${interaction.guild.id}_`
+                )
+            );
+
+        const sorted =
+            xpUsers.sort(
+                (a, b) => b.value - a.value
+            ).slice(0, 10);
+
+        let desc = "";
+
+        for (let i = 0; i < sorted.length; i++) {
+
+            const userId =
+                sorted[i].id.split("_")[2];
+
+            const user =
+                await client.users.fetch(userId)
+                    .catch(() => null);
+
+            if (!user) continue;
+
+            desc += `🏅 #${i + 1} • ${user.username} — ${sorted[i].value} XP\n`;
+        }
+
+        const embed =
+            new EmbedBuilder()
+                .setColor("#FFD700")
+                .setTitle("🏆 Classement XP")
+                .setDescription(
+                    desc || "Aucun joueur."
+                );
+
+        return interaction.reply({
+            embeds: [embed]
+        });
+    }
+
+    // ===== STAFF CHECK =====
+
+    const member = interaction.member;
+
+    if (
+        !member.roles.cache.has(STAFF_ROLE_ID)
+    ) {
+
+        return interaction.reply({
+            content:
+                "❌ Tu n'as pas la permission.",
+            ephemeral: true
+        });
+    }
+
+    // ===== ADDXP =====
+
+    if (interaction.commandName === "addxp") {
+
+        const target =
+            interaction.options.getUser(
+                "membre"
+            );
+
+        const amount =
+            interaction.options.getInteger(
+                "xp"
+            );
+
+        const memberTarget =
+            interaction.guild.members.cache.get(
+                target.id
+            );
+
+        await addXP(
+            memberTarget,
+            amount
+        );
+
+        return interaction.reply({
+            content:
+                `✅ ${amount} XP ajoutés à ${target}`
+        });
+    }
+
+    // ===== RESETXP =====
+
+    if (interaction.commandName === "resetxp") {
+
+        const target =
+            interaction.options.getUser(
+                "membre"
+            );
+
+        await db.set(
+            `xp_${interaction.guild.id}_${target.id}`,
+            0
+        );
+
+        await db.set(
+            `level_${interaction.guild.id}_${target.id}`,
+            0
+        );
+
+        return interaction.reply({
+            content:
+                `✅ XP reset pour ${target}`
+        });
+    }
+
+    // ===== GIVEAWAY =====
+
+    if (interaction.commandName === "giveaway") {
+
+        const prix =
+            interaction.options.getString(
+                "prix"
+            );
+
+        const temps =
+            interaction.options.getInteger(
+                "temps"
+            );
+
+        const embed =
+            new EmbedBuilder()
+                .setColor("#ff0000")
+                .setTitle("🎉 GIVEAWAY")
+                .setDescription(`
+🎁 Prix : ${prix}
+
+⏰ Durée : ${temps} minutes
+
+🎉 Réagis avec 🎉 !
+`);
+
+        const msg =
+            await interaction.reply({
+                embeds: [embed],
+                fetchReply: true
+            });
+
+        await msg.react("🎉");
+
+        setTimeout(async () => {
+
+            const fetched =
+                await msg.fetch();
+
+            const reaction =
+                fetched.reactions.cache.get("🎉");
+
+            if (!reaction) return;
+
+            const users =
+                await reaction.users.fetch();
+
+            const filtered =
+                users.filter(
+                    u => !u.bot
+                );
+
+            const winner =
+                filtered.random();
+
+            if (!winner) {
+
+                return interaction.followUp({
+                    content:
+                        "❌ Aucun participant."
+                });
+            }
+
+            interaction.followUp({
+                content:
+                    `🎉 Gagnant : ${winner}`
+            });
+
+        }, temps * 60 * 1000);
+    }
+
+    // ===== GIVEAWAY XP =====
+
+    if (interaction.commandName === "giveawayxp") {
+
+        const xp =
+            interaction.options.getInteger(
+                "xp"
+            );
+
+        const temps =
+            interaction.options.getInteger(
+                "temps"
+            );
+
+        const embed =
+            new EmbedBuilder()
+                .setColor("#00ff99")
+                .setTitle("🎉 GIVEAWAY XP")
+                .setDescription(`
+✨ XP : ${xp}
+
+⏰ Durée : ${temps} minutes
+
+🎉 Réagis avec 🎉 !
+`);
+
+        const msg =
+            await interaction.reply({
+                embeds: [embed],
+                fetchReply: true
+            });
+
+        await msg.react("🎉");
+
+        setTimeout(async () => {
+
+            const fetched =
+                await msg.fetch();
+
+            const reaction =
+                fetched.reactions.cache.get("🎉");
+
+            if (!reaction) return;
+
+            const users =
+                await reaction.users.fetch();
+
+            const filtered =
+                users.filter(
+                    u => !u.bot
+                );
+
+            const winner =
+                filtered.random();
+
+            if (!winner) {
+
+                return interaction.followUp({
+                    content:
+                        "❌ Aucun participant."
+                });
+            }
+
+            const memberWinner =
+                interaction.guild.members.cache.get(
+                    winner.id
+                );
+
+            await addXP(
+                memberWinner,
+                xp
+            );
+
+            interaction.followUp({
+                content:
+                    `🎉 ${winner} gagne ${xp} XP`
+            });
+
+        }, temps * 60 * 1000);
+    }
+
+});
+
 // ================= LOGIN =================
 
-client.login(TOKEN)
+client.login(TOKEN);

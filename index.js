@@ -3,7 +3,6 @@ require("dotenv").config();
 const {
     Client,
     GatewayIntentBits,
-    AttachmentBuilder,
     EmbedBuilder,
     REST,
     Routes,
@@ -12,7 +11,6 @@ const {
 } = require("discord.js");
 
 const { QuickDB } = require("quick.db");
-const Canvas = require("canvas");
 
 const db = new QuickDB();
 
@@ -189,7 +187,7 @@ client.on(
 
                     await addXP(
                         member,
-                        10
+                        5
                     );
 
                 }, 1 * 60 * 1000);
@@ -282,182 +280,34 @@ async function addXP(member, amount) {
             }
         }
 
-        try {
-
-            const canvas =
-                Canvas.createCanvas(
-                    900,
-                    300
-                );
-
-            const ctx =
-                canvas.getContext("2d");
-
-            ctx.fillStyle =
-                "#111827";
-
-            ctx.fillRect(
-                0,
-                0,
-                canvas.width,
-                canvas.height
+        const levelChannel =
+            member.guild.channels.cache.get(
+                LEVEL_CHANNEL_ID
             );
 
-            const gradient =
-                ctx.createLinearGradient(
-                    0,
-                    0,
-                    900,
-                    0
-                );
+        if (levelChannel) {
 
-            gradient.addColorStop(
-                0,
-                "#5865F2"
-            );
+            const embed =
+                new EmbedBuilder()
+                    .setColor("#5865F2")
+                    .setTitle("🎉 Niveau gagné")
+                    .setDescription(
+                        `🚀 ${member} vient de passer niveau **${newLevel}** !`
+                    )
+                    .addFields(
+                        {
+                            name: "✨ XP",
+                            value: `${xp}`,
+                            inline: true
+                        }
+                    )
+                    .setThumbnail(
+                        member.user.displayAvatarURL()
+                    );
 
-            gradient.addColorStop(
-                1,
-                "#8B5CF6"
-            );
-
-            ctx.fillStyle =
-                gradient;
-
-            ctx.fillRect(
-                0,
-                0,
-                900,
-                15
-            );
-
-            const avatar =
-                await Canvas.loadImage(
-                    member.user.displayAvatarURL({
-                        extension: "png",
-                        size: 256
-                    })
-                );
-
-            ctx.save();
-
-            ctx.beginPath();
-
-            ctx.arc(
-                150,
-                150,
-                90,
-                0,
-                Math.PI * 2
-            );
-
-            ctx.closePath();
-
-            ctx.clip();
-
-            ctx.drawImage(
-                avatar,
-                60,
-                60,
-                180,
-                180
-            );
-
-            ctx.restore();
-
-            ctx.beginPath();
-
-            ctx.arc(
-                150,
-                150,
-                95,
-                0,
-                Math.PI * 2
-            );
-
-            ctx.strokeStyle =
-                "#5865F2";
-
-            ctx.lineWidth = 8;
-
-            ctx.stroke();
-
-            ctx.fillStyle =
-                "#ffffff";
-
-            ctx.font =
-                "bold 42px Sans";
-
-            ctx.fillText(
-                member.user.username,
-                300,
-                120
-            );
-
-            ctx.fillStyle =
-                "#9CA3AF";
-
-            ctx.font =
-                "30px Sans";
-
-            ctx.fillText(
-                `🎉 Niveau ${newLevel} atteint !`,
-                300,
-                180
-            );
-
-            ctx.fillStyle =
-                "#ffffff";
-
-            ctx.font =
-                "24px Sans";
-
-            ctx.fillText(
-                `${xp} XP`,
-                300,
-                230
-            );
-
-            const attachment =
-                new AttachmentBuilder(
-                    canvas.toBuffer(),
-                    {
-                        name:
-                            "levelup.png"
-                    }
-                );
-
-            const levelChannel =
-                member.guild.channels.cache.get(
-                    LEVEL_CHANNEL_ID
-                );
-
-            if (levelChannel) {
-
-                const embed =
-                    new EmbedBuilder()
-                        .setColor(
-                            "#5865F2"
-                        )
-                        .setDescription(
-                            `🚀 ${member} vient de passer niveau ${newLevel} !`
-                        )
-                        .setImage(
-                            "attachment://levelup.png"
-                        );
-
-                levelChannel.send({
-                    embeds: [embed],
-                    files: [attachment]
-                });
-            }
-
-        } catch (err) {
-
-            console.log(
-                "Erreur Canvas:",
-                err
-            );
+            levelChannel.send({
+                embeds: [embed]
+            });
         }
     }
 }
@@ -524,46 +374,6 @@ const commands = [
                     "Le membre"
                 )
                 .setRequired(true)
-        ),
-
-    // ================= GIVEAWAY =================
-
-    new SlashCommandBuilder()
-        .setName("giveaway")
-        .setDescription(
-            "Créer un giveaway"
-        )
-        .addStringOption(option =>
-            option
-                .setName("prix")
-                .setDescription(
-                    "Le lot"
-                )
-                .setRequired(true)
-        )
-        .addIntegerOption(option =>
-            option
-                .setName("temps")
-                .setDescription(
-                    "Temps en minutes"
-                )
-                .setRequired(true)
-        ),
-
-    // ================= GIVEAWAYXP =================
-
-    new SlashCommandBuilder()
-        .setName("giveawayxp")
-        .setDescription(
-            "Donner de l'xp à tout le serveur"
-        )
-        .addIntegerOption(option =>
-            option
-                .setName("xp")
-                .setDescription(
-                    "Nombre d'xp"
-                )
-                .setRequired(true)
         )
 
 ].map(command =>
@@ -611,109 +421,180 @@ client.on(
             !interaction.isChatInputCommand()
         ) return;
 
-        // ================= GIVEAWAY =================
+        // ================= RANK =================
 
         if (
             interaction.commandName ===
-            "giveaway"
+            "rank"
         ) {
 
-            if (
-                !interaction.member.roles.cache.has(
-                    STAFF_ROLE_ID
-                )
-            ) {
+            const xp =
+                await db.get(
+                    `xp_${interaction.guild.id}_${interaction.user.id}`
+                ) || 0;
 
-                return interaction.reply({
-                    content:
-                        "❌ Tu n'as pas la permission.",
-                    ephemeral: true
-                });
-            }
-
-            const prize =
-                interaction.options.getString(
-                    "prix"
-                );
-
-            const time =
-                interaction.options.getInteger(
-                    "temps"
-                );
+            const level =
+                await db.get(
+                    `level_${interaction.guild.id}_${interaction.user.id}`
+                ) || 0;
 
             const embed =
                 new EmbedBuilder()
-                    .setColor("#5865F2")
-                    .setTitle("🎉 GIVEAWAY 🎉")
-                    .setDescription(`
-🎁 **Lot :** ${prize}
+                    .setColor(
+                        "#5865F2"
+                    )
+                    .setTitle(
+                        `📊 ${interaction.user.username}`
+                    )
+                    .setThumbnail(
+                        interaction.user.displayAvatarURL()
+                    )
+                    .addFields(
+                        {
+                            name:
+                                "⭐ Niveau",
+                            value:
+                                `${level}`,
+                            inline: true
+                        },
+                        {
+                            name:
+                                "✨ XP",
+                            value:
+                                `${xp}`,
+                            inline: true
+                        }
+                    );
 
-⏰ Temps :
-${time} minute(s)
-
-🎊 Réagis avec 🎉 pour participer !
-                    `);
-
-            const msg =
-                await interaction.channel.send({
-                    embeds: [embed]
-                });
-
-            await msg.react("🎉");
-
-            interaction.reply({
-                content:
-                    "✅ Giveaway lancé.",
-                ephemeral: true
+            return interaction.reply({
+                embeds: [embed]
             });
-
-            setTimeout(async () => {
-
-                const fetched =
-                    await msg.fetch();
-
-                const reaction =
-                    fetched.reactions.cache.get(
-                        "🎉"
-                    );
-
-                if (!reaction)
-                    return;
-
-                const users =
-                    await reaction.users.fetch();
-
-                const filtered =
-                    users.filter(
-                        u => !u.bot
-                    );
-
-                if (
-                    filtered.size <= 0
-                ) {
-
-                    interaction.channel.send(
-                        "❌ Aucun participant."
-                    );
-
-                    return;
-                }
-
-                const winner =
-                    filtered.random();
-
-                interaction.channel.send(
-                    `🎉 Félicitations ${winner} tu as gagné **${prize}** !`
-                );
-
-            }, time * 60 * 1000);
         }
 
-        // ================= GIVEAWAYXP =================
+        // ================= TOP =================
 
         if (
             interaction.commandName ===
-            "giveawayxp"
+            "top"
+        ) {
+
+            const all =
+                await db.all();
+
+            const xpData = all
+                .filter(data =>
+                    data.id.startsWith(
+                        `xp_${interaction.guild.id}`
+                    )
+                )
+                .sort(
+                    (a, b) =>
+                        b.value -
+                        a.value
+                )
+                .slice(0, 10);
+
+            let leaderboard = "";
+
+            for (
+                let i = 0;
+                i < xpData.length;
+                i++
+            ) {
+
+                const data =
+                    xpData[i];
+
+                const userId =
+                    data.id.split(
+                        "_"
+                    )[2];
+
+                const user =
+                    await client.users.fetch(
+                        userId
+                    )
+                        .catch(
+                            () => null
+                        );
+
+                if (!user)
+                    continue;
+
+                leaderboard +=
+                    `🏅 #${i + 1} • ${user.username} — ${data.value} XP\n`;
+            }
+
+            if (!leaderboard) {
+
+                leaderboard =
+                    "❌ Aucun joueur dans le classement.";
+            }
+
+            const embed =
+                new EmbedBuilder()
+                    .setColor(
+                        "#5865F2"
+                    )
+                    .setTitle(
+                        "🏆 Classement XP"
+                    )
+                    .setDescription(
+                        leaderboard
+                    );
+
+            return interaction.reply({
+                embeds: [embed]
+            });
+        }
+
+        // ================= PING =================
+
+        if (
+            interaction.commandName ===
+            "ping"
+        ) {
+
+            return interaction.reply({
+                content:
+                    `🏓 Pong : ${client.ws.ping}ms`
+            });
+        }
+
+        // ================= HELP =================
+
+        if (
+            interaction.commandName ===
+            "help"
+        ) {
+
+            const embed =
+                new EmbedBuilder()
+                    .setColor(
+                        "#5865F2"
+                    )
+                    .setTitle(
+                        "📚 Commandes"
+                    )
+                    .setDescription(`
+\`/rank\` → Voir ton niveau
+\`/top\` → Classement XP
+\`/ping\` → Voir le ping
+\`/help\` → Voir les commandes
+\`/addxp\` → Ajouter de l'xp
+\`/resetxp\` → Reset l'xp
+                    `);
+
+            return interaction.reply({
+                embeds: [embed]
+            });
+        }
+
+        // ================= ADDXP =================
+
+        if (
+            interaction.commandName ===
+            "addxp"
         ) {
 
             if (
@@ -728,29 +609,66 @@ ${time} minute(s)
                     ephemeral: true
                 });
             }
+
+            const member =
+                interaction.options.getMember(
+                    "membre"
+                );
 
             const amount =
                 interaction.options.getInteger(
                     "xp"
                 );
 
-            const members =
-                interaction.guild.members.cache;
+            await addXP(
+                member,
+                amount
+            );
 
-            members.forEach(async member => {
-
-                if (member.user.bot)
-                    return;
-
-                await addXP(
-                    member,
-                    amount
-                );
-            });
-
-            interaction.reply({
+            return interaction.reply({
                 content:
-                    `✅ ${amount} XP donné à tout le serveur.`
+                    `✅ ${amount} XP ajouté à ${member}`
+            });
+        }
+
+        // ================= RESETXP =================
+
+        if (
+            interaction.commandName ===
+            "resetxp"
+        ) {
+
+            if (
+                !interaction.member.roles.cache.has(
+                    STAFF_ROLE_ID
+                )
+            ) {
+
+                return interaction.reply({
+                    content:
+                        "❌ Tu n'as pas la permission.",
+                    ephemeral: true
+                });
+            }
+
+            const member =
+                interaction.options.getMember(
+                    "membre"
+                );
+
+            await db.set(
+                `xp_${interaction.guild.id}_${member.id}`,
+                0
+            );
+
+            await db.set(
+                `level_${interaction.guild.id}_${member.id}`,
+                0
+            );
+
+            return interaction.reply({
+                content:
+                    `✅ XP reset pour ${member}`
             });
         }
     }

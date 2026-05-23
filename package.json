@@ -1,0 +1,16 @@
+{
+  "name": "discord-xp-bot",
+  "version": "1.0.0",
+  "description": "Discord XP Bot",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^9.4.3",
+    "canvas": "^2.11.2",
+    "discord.js": "^14.15.3",
+    "dotenv": "^16.4.5",
+    "quick.db": "^9.1.7"
+  }
+}

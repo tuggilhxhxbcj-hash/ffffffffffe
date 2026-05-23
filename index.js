@@ -83,7 +83,7 @@ client.once("clientReady", async () => {
 
 });
 
-// ================= AUTO ROLE =================
+// ================= JOIN =================
 
 client.on("guildMemberAdd", async (member) => {
 
@@ -120,7 +120,7 @@ client.on("guildMemberAdd", async (member) => {
     });
 });
 
-// ================= LEAVE MESSAGE =================
+// ================= LEAVE =================
 
 client.on("guildMemberRemove", async (member) => {
 
@@ -136,9 +136,6 @@ client.on("guildMemberRemove", async (member) => {
         .setTitle("👋 Membre parti")
         .setDescription(
             `😢 ${member.user.username} a quitté le serveur.`
-        )
-        .setThumbnail(
-            member.user.displayAvatarURL()
         );
 
     channel.send({
@@ -164,9 +161,6 @@ client.on("guildMemberUpdate", async (oldMember, newMember) => {
             .setTitle("🚀 Nouveau Boost !")
             .setDescription(
                 `💎 ${newMember} vient de booster le serveur !`
-            )
-            .setThumbnail(
-                newMember.user.displayAvatarURL()
             );
 
         channel.send({
@@ -219,7 +213,6 @@ client.on(
     "voiceStateUpdate",
     async (oldState, newState) => {
 
-        // rejoint vocal
         if (
             !oldState.channel &&
             newState.channel
@@ -231,7 +224,6 @@ client.on(
                     const member =
                         newState.member;
 
-                    // quitté vocal
                     if (
                         !member.voice.channel
                     ) {
@@ -241,28 +233,23 @@ client.on(
                         return;
                     }
 
-                    // seul
                     if (
                         member.voice.channel.members.size <= 1
                     ) return;
 
-                    // mute
                     if (
                         member.voice.selfMute
                     ) return;
 
-                    // deaf
                     if (
                         member.voice.selfDeaf
                     ) return;
 
-                    // afk
                     if (
                         member.voice.channel.id ===
                         member.guild.afkChannelId
                     ) return;
 
-                    // AJOUT XP
                     await addXP(
                         member,
                         20
@@ -276,7 +263,6 @@ client.on(
             );
         }
 
-        // quitte vocal
         if (
             oldState.channel &&
             !newState.channel
@@ -299,7 +285,7 @@ client.on(
     }
 );
 
-// ================= CALCUL LEVEL =================
+// ================= LEVEL =================
 
 function calculateLevel(xp) {
 
@@ -387,33 +373,23 @@ const commands = [
 
     new SlashCommandBuilder()
         .setName("rank")
-        .setDescription(
-            "Voir ton niveau"
-        ),
+        .setDescription("Voir ton niveau"),
 
     new SlashCommandBuilder()
         .setName("top")
-        .setDescription(
-            "Voir le classement"
-        ),
+        .setDescription("Voir le classement"),
 
     new SlashCommandBuilder()
         .setName("ping")
-        .setDescription(
-            "Voir le ping"
-        ),
+        .setDescription("Voir le ping"),
 
     new SlashCommandBuilder()
         .setName("help")
-        .setDescription(
-            "Voir les commandes"
-        ),
+        .setDescription("Voir les commandes"),
 
     new SlashCommandBuilder()
         .setName("addxp")
-        .setDescription(
-            "Ajouter XP"
-        )
+        .setDescription("Ajouter XP")
         .addUserOption(option =>
             option
                 .setName("membre")
@@ -429,13 +405,43 @@ const commands = [
 
     new SlashCommandBuilder()
         .setName("resetxp")
-        .setDescription(
-            "Reset XP"
-        )
+        .setDescription("Reset XP")
         .addUserOption(option =>
             option
                 .setName("membre")
                 .setDescription("Le membre")
+                .setRequired(true)
+        ),
+
+    new SlashCommandBuilder()
+        .setName("giveaway")
+        .setDescription("Créer un giveaway")
+        .addStringOption(option =>
+            option
+                .setName("prix")
+                .setDescription("Le prix")
+                .setRequired(true)
+        )
+        .addIntegerOption(option =>
+            option
+                .setName("temps")
+                .setDescription("Temps en minutes")
+                .setRequired(true)
+        ),
+
+    new SlashCommandBuilder()
+        .setName("giveawayxp")
+        .setDescription("Créer un giveaway XP")
+        .addIntegerOption(option =>
+            option
+                .setName("xp")
+                .setDescription("XP")
+                .setRequired(true)
+        )
+        .addIntegerOption(option =>
+            option
+                .setName("temps")
+                .setDescription("Temps")
                 .setRequired(true)
         )
 
@@ -483,6 +489,35 @@ client.on(
         if (
             !interaction.isChatInputCommand()
         ) return;
+
+        // ================= STAFF =================
+
+        const staffOnly = [
+            "addxp",
+            "resetxp",
+            "giveaway",
+            "giveawayxp"
+        ];
+
+        if (
+            staffOnly.includes(
+                interaction.commandName
+            )
+        ) {
+
+            if (
+                !interaction.member.roles.cache.has(
+                    STAFF_ROLE_ID
+                )
+            ) {
+
+                return interaction.reply({
+                    content:
+                        "❌ Tu n'as pas la permission.",
+                    ephemeral: true
+                });
+            }
+        }
 
         // ================= RANK =================
 
@@ -577,18 +612,12 @@ client.on(
                     `🏅 #${i + 1} • ${user.username} — ${data.value} XP\n`;
             }
 
-            if (!leaderboard) {
-
-                leaderboard =
-                    "❌ Aucun joueur.";
-            }
-
             const embed =
                 new EmbedBuilder()
                     .setColor("#5865F2")
                     .setTitle("🏆 Classement XP")
                     .setDescription(
-                        leaderboard
+                        leaderboard || "❌ Aucun joueur."
                     );
 
             interaction.reply({
@@ -625,38 +654,15 @@ client.on(
 /top
 /ping
 /help
+/addxp
+/resetxp
+/giveaway
+/giveawayxp
                     `);
 
             interaction.reply({
                 embeds: [embed]
             });
-        }
-
-        // ================= STAFF ONLY =================
-
-        const staffOnly = [
-            "addxp",
-            "resetxp"
-        ];
-
-        if (
-            staffOnly.includes(
-                interaction.commandName
-            )
-        ) {
-
-            if (
-                !interaction.member.roles.cache.has(
-                    STAFF_ROLE_ID
-                )
-            ) {
-
-                return interaction.reply({
-                    content:
-                        "❌ Tu n'as pas la permission.",
-                    ephemeral: true
-                });
-            }
         }
 
         // ================= ADDXP =================
@@ -713,6 +719,178 @@ client.on(
                 content:
                     `✅ XP reset pour ${member}`
             });
+        }
+
+        // ================= GIVEAWAY =================
+
+        if (
+            interaction.commandName ===
+            "giveaway"
+        ) {
+
+            const prize =
+                interaction.options.getString(
+                    "prix"
+                );
+
+            const minutes =
+                interaction.options.getInteger(
+                    "temps"
+                );
+
+            const embed =
+                new EmbedBuilder()
+                    .setColor("#5865F2")
+                    .setTitle("🎉 GIVEAWAY")
+                    .setDescription(`
+🎁 Prix : **${prize}**
+
+⏰ Temps : ${minutes} minute(s)
+
+🎊 Réagis avec 🎉 !
+                    `);
+
+            const msg =
+                await interaction.channel.send({
+                    embeds: [embed]
+                });
+
+            await msg.react("🎉");
+
+            interaction.reply({
+                content:
+                    "✅ Giveaway lancé",
+                ephemeral: true
+            });
+
+            setTimeout(async () => {
+
+                const fetched =
+                    await msg.fetch();
+
+                const reaction =
+                    fetched.reactions.cache.get(
+                        "🎉"
+                    );
+
+                if (!reaction) return;
+
+                const users =
+                    await reaction.users.fetch();
+
+                const validUsers =
+                    users.filter(
+                        u => !u.bot
+                    );
+
+                if (
+                    validUsers.size <= 0
+                ) {
+
+                    return interaction.channel.send(
+                        "❌ Aucun participant."
+                    );
+                }
+
+                const winner =
+                    validUsers.random();
+
+                interaction.channel.send(
+                    `🎉 ${winner} a gagné **${prize}**`
+                );
+
+            }, minutes * 60000);
+        }
+
+        // ================= GIVEAWAY XP =================
+
+        if (
+            interaction.commandName ===
+            "giveawayxp"
+        ) {
+
+            const xpAmount =
+                interaction.options.getInteger(
+                    "xp"
+                );
+
+            const minutes =
+                interaction.options.getInteger(
+                    "temps"
+                );
+
+            const embed =
+                new EmbedBuilder()
+                    .setColor("#F59E0B")
+                    .setTitle("⭐ GIVEAWAY XP")
+                    .setDescription(`
+✨ XP : **${xpAmount}**
+
+⏰ Temps : ${minutes} minute(s)
+
+🎊 Réagis avec ⭐ !
+                    `);
+
+            const msg =
+                await interaction.channel.send({
+                    embeds: [embed]
+                });
+
+            await msg.react("⭐");
+
+            interaction.reply({
+                content:
+                    "✅ Giveaway XP lancé",
+                ephemeral: true
+            });
+
+            setTimeout(async () => {
+
+                const fetched =
+                    await msg.fetch();
+
+                const reaction =
+                    fetched.reactions.cache.get(
+                        "⭐"
+                    );
+
+                if (!reaction) return;
+
+                const users =
+                    await reaction.users.fetch();
+
+                const validUsers =
+                    users.filter(
+                        u => !u.bot
+                    );
+
+                if (
+                    validUsers.size <= 0
+                ) {
+
+                    return interaction.channel.send(
+                        "❌ Aucun participant."
+                    );
+                }
+
+                const winner =
+                    validUsers.random();
+
+                const member =
+                    interaction.guild.members.cache.get(
+                        winner.id
+                    );
+
+                await addXP(
+                    member,
+                    xpAmount
+                );
+
+                interaction.channel.send(
+                    `🎉 ${winner} a gagné ${xpAmount} XP`
+                );
+
+            }, minutes * 60000);
         }
     }
 );

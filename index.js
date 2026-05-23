@@ -83,35 +83,93 @@ client.once("clientReady", async () => {
 
 });
 
-// ================= AUTO ROLE =================
+// ================= AUTO ROLE + JOIN =================
 
 client.on("guildMemberAdd", async (member) => {
 
+    // auto role
     const role =
         member.guild.roles.cache.get(
             AUTO_ROLE_ID
         );
 
     if (role) {
+
         member.roles.add(role)
             .catch(console.error);
     }
+
+    // message join
+    const channel =
+        member.guild.channels.cache.get(
+            LEVEL_CHANNEL_ID
+        );
+
+    if (!channel) return;
+
+    const embed = new EmbedBuilder()
+        .setColor("#5865F2")
+        .setTitle("👋 Nouveau membre")
+        .setDescription(
+            `Bienvenue ${member} sur le serveur !`
+        )
+        .setThumbnail(
+            member.user.displayAvatarURL()
+        );
+
+    channel.send({
+        embeds: [embed]
+    });
+});
+
+// ================= LEAVE MESSAGE =================
+
+client.on("guildMemberRemove", async (member) => {
 
     const channel =
         member.guild.channels.cache.get(
             LEVEL_CHANNEL_ID
         );
 
-    if (channel) {
+    if (!channel) return;
+
+    const embed = new EmbedBuilder()
+        .setColor("#ff0000")
+        .setTitle("👋 Membre parti")
+        .setDescription(
+            `😢 ${member.user.username} a quitté le serveur.`
+        )
+        .setThumbnail(
+            member.user.displayAvatarURL()
+        );
+
+    channel.send({
+        embeds: [embed]
+    });
+});
+
+// ================= BOOST MESSAGE =================
+
+client.on("guildMemberUpdate", async (oldMember, newMember) => {
+
+    // boost détecté
+    if (!oldMember.premiumSince && newMember.premiumSince) {
+
+        const channel =
+            newMember.guild.channels.cache.get(
+                LEVEL_CHANNEL_ID
+            );
+
+        if (!channel) return;
 
         const embed = new EmbedBuilder()
-            .setColor("#5865F2")
-            .setTitle("👋 Nouveau membre")
+            .setColor("#FF73FA")
+            .setTitle("🚀 Nouveau Boost !")
             .setDescription(
-                `Bienvenue ${member} sur le serveur !`
+                `💎 ${newMember} vient de booster le serveur !`
             )
             .setThumbnail(
-                member.user.displayAvatarURL()
+                newMember.user.displayAvatarURL()
             );
 
         channel.send({
@@ -702,7 +760,6 @@ client.on(
                     `🏅 #${i + 1} • ${user.username} — ${data.value} XP\n`;
             }
 
-            // vide
             if (!leaderboard) {
 
                 leaderboard =
@@ -755,12 +812,12 @@ client.on(
                         "📚 Commandes"
                     )
                     .setDescription(`
-\`/rank\` → Voir ton niveau
-\`/top\` → Classement XP
-\`/ping\` → Voir le ping
-\`/help\` → Voir les commandes
-\`/addxp\` → Ajouter de l'xp
-\`/resetxp\` → Reset l'xp
+/rank → Voir ton niveau
+/top → Classement XP
+/ping → Voir le ping
+/help → Voir les commandes
+/addxp → Ajouter de l'xp
+/resetxp → Reset l'xp
                     `);
 
             interaction.reply({

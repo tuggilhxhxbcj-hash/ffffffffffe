@@ -3,6 +3,7 @@ require("dotenv").config();
 const {
     Client,
     GatewayIntentBits,
+    AttachmentBuilder,
     EmbedBuilder,
     REST,
     Routes,
@@ -11,6 +12,8 @@ const {
 } = require("discord.js");
 
 const { QuickDB } = require("quick.db");
+const Canvas = require("canvas");
+
 const db = new QuickDB();
 
 // ================= CLIENT =================
@@ -80,7 +83,7 @@ client.once("clientReady", async () => {
 
 });
 
-// ================= JOIN =================
+// ================= AUTO ROLE =================
 
 client.on("guildMemberAdd", async (member) => {
 
@@ -90,7 +93,6 @@ client.on("guildMemberAdd", async (member) => {
         );
 
     if (role) {
-
         member.roles.add(role)
             .catch(console.error);
     }
@@ -100,64 +102,16 @@ client.on("guildMemberAdd", async (member) => {
             LEVEL_CHANNEL_ID
         );
 
-    if (!channel) return;
-
-    const embed = new EmbedBuilder()
-        .setColor("#5865F2")
-        .setTitle("👋 Nouveau membre")
-        .setDescription(
-            `Bienvenue ${member} sur le serveur !`
-        )
-        .setThumbnail(
-            member.user.displayAvatarURL()
-        );
-
-    channel.send({
-        embeds: [embed]
-    });
-});
-
-// ================= LEAVE =================
-
-client.on("guildMemberRemove", async (member) => {
-
-    const channel =
-        member.guild.channels.cache.get(
-            LEVEL_CHANNEL_ID
-        );
-
-    if (!channel) return;
-
-    const embed = new EmbedBuilder()
-        .setColor("#ff0000")
-        .setTitle("👋 Membre parti")
-        .setDescription(
-            `😢 ${member.user.username} a quitté le serveur.`
-        );
-
-    channel.send({
-        embeds: [embed]
-    });
-});
-
-// ================= BOOST =================
-
-client.on("guildMemberUpdate", async (oldMember, newMember) => {
-
-    if (!oldMember.premiumSince && newMember.premiumSince) {
-
-        const channel =
-            newMember.guild.channels.cache.get(
-                LEVEL_CHANNEL_ID
-            );
-
-        if (!channel) return;
+    if (channel) {
 
         const embed = new EmbedBuilder()
-            .setColor("#FF73FA")
-            .setTitle("🚀 Nouveau Boost !")
+            .setColor("#5865F2")
+            .setTitle("👋 Nouveau membre")
             .setDescription(
-                `💎 ${newMember} vient de booster le serveur !`
+                `Bienvenue ${member} sur le serveur !`
+            )
+            .setThumbnail(
+                member.user.displayAvatarURL()
             );
 
         channel.send({
@@ -173,6 +127,7 @@ client.on("messageCreate", async (message) => {
     if (message.author.bot) return;
     if (!message.guild) return;
 
+    // anti spam
     if (cooldown.has(message.author.id))
         return;
 
@@ -180,9 +135,10 @@ client.on("messageCreate", async (message) => {
 
     setTimeout(() => {
         cooldown.delete(message.author.id);
-    }, 10000);
+    }, 3000);
 
-    await addXP(message.member, 10);
+    // 25 XP message
+    await addXP(message.member, 25);
 });
 
 // ================= REACTION XP =================
@@ -200,7 +156,8 @@ client.on(
 
         if (!member) return;
 
-        await addXP(member, 5);
+        // 10 XP réaction
+        await addXP(member, 10);
     }
 );
 
@@ -210,6 +167,7 @@ client.on(
     "voiceStateUpdate",
     async (oldState, newState) => {
 
+        // rejoint vocal
         if (
             !oldState.channel &&
             newState.channel
@@ -221,6 +179,7 @@ client.on(
                     const member =
                         newState.member;
 
+                    // quitté vocal
                     if (
                         !member.voice.channel
                     ) {
@@ -230,21 +189,16 @@ client.on(
                         return;
                     }
 
-                    if (
-                        member.voice.channel.members.size <= 1
-                    ) return;
-
-                    if (
-                        member.voice.channel.id ===
-                        member.guild.afkChannelId
-                    ) return;
+                    // XP même mute
+                    // XP même seul
+                    // 50 XP toutes les 1 minute
 
                     await addXP(
                         member,
-                        20
+                        50
                     );
 
-                }, 5 * 60 * 1000);
+                }, 1 * 60 * 1000);
 
             voiceUsers.set(
                 newState.id,
@@ -252,6 +206,7 @@ client.on(
             );
         }
 
+        // quitte vocal
         if (
             oldState.channel &&
             !newState.channel
@@ -274,7 +229,7 @@ client.on(
     }
 );
 
-// ================= LEVEL =================
+// ================= CALCUL LEVEL =================
 
 function calculateLevel(xp) {
 
@@ -303,12 +258,17 @@ async function addXP(member, amount) {
     let oldLevel =
         await db.get(levelKey) || 0;
 
+    // ajoute xp
     xp += amount;
 
+    // save xp
     await db.set(xpKey, xp);
 
+    // nouveau niveau
     const newLevel =
         calculateLevel(xp);
+
+    // ================= LEVEL UP =================
 
     if (newLevel > oldLevel) {
 
@@ -316,6 +276,8 @@ async function addXP(member, amount) {
             levelKey,
             newLevel
         );
+
+        // ===== ROLE =====
 
         if (levelRoles[newLevel]) {
 
@@ -334,24 +296,191 @@ async function addXP(member, amount) {
             }
         }
 
-        const levelChannel =
-            member.guild.channels.cache.get(
-                LEVEL_CHANNEL_ID
+        // ================= CARD =================
+
+        try {
+
+            const canvas =
+                Canvas.createCanvas(
+                    900,
+                    300
+                );
+
+            const ctx =
+                canvas.getContext("2d");
+
+            // fond
+            ctx.fillStyle =
+                "#111827";
+
+            ctx.fillRect(
+                0,
+                0,
+                canvas.width,
+                canvas.height
             );
 
-        if (levelChannel) {
+            // gradient
+            const gradient =
+                ctx.createLinearGradient(
+                    0,
+                    0,
+                    900,
+                    0
+                );
 
-            const embed =
-                new EmbedBuilder()
-                    .setColor("#5865F2")
-                    .setTitle("🚀 Niveau augmenté")
-                    .setDescription(
-                        `${member} est maintenant niveau ${newLevel}`
-                    );
+            gradient.addColorStop(
+                0,
+                "#5865F2"
+            );
 
-            levelChannel.send({
-                embeds: [embed]
-            });
+            gradient.addColorStop(
+                1,
+                "#8B5CF6"
+            );
+
+            ctx.fillStyle =
+                gradient;
+
+            ctx.fillRect(
+                0,
+                0,
+                900,
+                15
+            );
+
+            // avatar
+            const avatar =
+                await Canvas.loadImage(
+                    member.user.displayAvatarURL({
+                        extension: "png",
+                        size: 256
+                    })
+                );
+
+            ctx.save();
+
+            ctx.beginPath();
+
+            ctx.arc(
+                150,
+                150,
+                90,
+                0,
+                Math.PI * 2
+            );
+
+            ctx.closePath();
+
+            ctx.clip();
+
+            ctx.drawImage(
+                avatar,
+                60,
+                60,
+                180,
+                180
+            );
+
+            ctx.restore();
+
+            // border
+            ctx.beginPath();
+
+            ctx.arc(
+                150,
+                150,
+                95,
+                0,
+                Math.PI * 2
+            );
+
+            ctx.strokeStyle =
+                "#5865F2";
+
+            ctx.lineWidth = 8;
+
+            ctx.stroke();
+
+            // username
+            ctx.fillStyle =
+                "#ffffff";
+
+            ctx.font =
+                "bold 42px Sans";
+
+            ctx.fillText(
+                member.user.username,
+                300,
+                120
+            );
+
+            // level
+            ctx.fillStyle =
+                "#9CA3AF";
+
+            ctx.font =
+                "30px Sans";
+
+            ctx.fillText(
+                `🎉 Niveau ${newLevel} atteint !`,
+                300,
+                180
+            );
+
+            // xp
+            ctx.fillStyle =
+                "#ffffff";
+
+            ctx.font =
+                "24px Sans";
+
+            ctx.fillText(
+                `${xp} XP`,
+                300,
+                230
+            );
+
+            const attachment =
+                new AttachmentBuilder(
+                    canvas.toBuffer(),
+                    {
+                        name:
+                            "levelup.png"
+                    }
+                );
+
+            const levelChannel =
+                member.guild.channels.cache.get(
+                    LEVEL_CHANNEL_ID
+                );
+
+            if (levelChannel) {
+
+                const embed =
+                    new EmbedBuilder()
+                        .setColor(
+                            "#5865F2"
+                        )
+                        .setDescription(
+                            `🚀 ${member} vient de passer niveau ${newLevel} !`
+                        )
+                        .setImage(
+                            "attachment://levelup.png"
+                        );
+
+                levelChannel.send({
+                    embeds: [embed],
+                    files: [attachment]
+                });
+            }
+
+        } catch (err) {
+
+            console.log(
+                "Erreur Canvas:",
+                err
+            );
         }
     }
 }
@@ -362,80 +491,67 @@ const commands = [
 
     new SlashCommandBuilder()
         .setName("rank")
-        .setDescription("Voir ton niveau"),
+        .setDescription(
+            "Voir ton niveau"
+        ),
 
     new SlashCommandBuilder()
         .setName("top")
-        .setDescription("Voir le classement"),
+        .setDescription(
+            "Voir le classement XP"
+        ),
 
     new SlashCommandBuilder()
         .setName("ping")
-        .setDescription("Voir le ping"),
+        .setDescription(
+            "Voir le ping du bot"
+        ),
 
     new SlashCommandBuilder()
         .setName("help")
-        .setDescription("Voir les commandes"),
+        .setDescription(
+            "Voir les commandes"
+        ),
 
     new SlashCommandBuilder()
         .setName("addxp")
-        .setDescription("Ajouter XP")
+        .setDescription(
+            "Ajouter de l'xp"
+        )
         .addUserOption(option =>
             option
                 .setName("membre")
-                .setDescription("Le membre")
+                .setDescription(
+                    "Le membre"
+                )
                 .setRequired(true)
         )
         .addIntegerOption(option =>
             option
                 .setName("xp")
-                .setDescription("XP")
+                .setDescription(
+                    "Nombre d'xp"
+                )
                 .setRequired(true)
         ),
 
     new SlashCommandBuilder()
         .setName("resetxp")
-        .setDescription("Reset XP")
+        .setDescription(
+            "Reset l'xp"
+        )
         .addUserOption(option =>
             option
                 .setName("membre")
-                .setDescription("Le membre")
-                .setRequired(true)
-        ),
-
-    new SlashCommandBuilder()
-        .setName("giveaway")
-        .setDescription("Créer un giveaway")
-        .addStringOption(option =>
-            option
-                .setName("prix")
-                .setDescription("Le prix")
-                .setRequired(true)
-        )
-        .addIntegerOption(option =>
-            option
-                .setName("temps")
-                .setDescription("Temps")
-                .setRequired(true)
-        ),
-
-    new SlashCommandBuilder()
-        .setName("giveawayxp")
-        .setDescription("Créer un giveaway XP")
-        .addIntegerOption(option =>
-            option
-                .setName("xp")
-                .setDescription("XP")
-                .setRequired(true)
-        )
-        .addIntegerOption(option =>
-            option
-                .setName("temps")
-                .setDescription("Temps")
+                .setDescription(
+                    "Le membre"
+                )
                 .setRequired(true)
         )
 
 ].map(command =>
-    command.toJSON());
+    command.toJSON()
+);
 
 // ================= REGISTER =================
 
@@ -471,350 +587,266 @@ const rest =
 
 // ================= INTERACTIONS =================
 
-client.on("interactionCreate", async (interaction) => {
+client.on(
+    "interactionCreate",
+    async (interaction) => {
 
-    if (!interaction.isChatInputCommand()) return;
+        if (
+            !interaction.isChatInputCommand()
+        ) return;
 
-    // ===== PING =====
+        // ================= RANK =================
 
-    if (interaction.commandName === "ping") {
+        if (
+            interaction.commandName ===
+            "rank"
+        ) {
 
-        return interaction.reply({
-            embeds: [
+            const xp =
+                await db.get(
+                    `xp_${interaction.guild.id}_${interaction.user.id}`
+                ) || 0;
+
+            const level =
+                await db.get(
+                    `level_${interaction.guild.id}_${interaction.user.id}`
+                ) || 0;
+
+            const embed =
                 new EmbedBuilder()
-                    .setColor("#5865F2")
-                    .setTitle("🏓 Pong")
-                    .setDescription(
-                        `Ping : ${client.ws.ping}ms`
+                    .setColor(
+                        "#5865F2"
                     )
-            ]
-        });
-    }
+                    .setTitle(
+                        `📊 ${interaction.user.username}`
+                    )
+                    .setThumbnail(
+                        interaction.user.displayAvatarURL()
+                    )
+                    .addFields(
+                        {
+                            name:
+                                "⭐ Niveau",
+                            value:
+                                `${level}`,
+                            inline: true
+                        },
+                        {
+                            name:
+                                "✨ XP",
+                            value:
+                                `${xp}`,
+                            inline: true
+                        }
+                    );
 
-    // ===== HELP =====
-
-    if (interaction.commandName === "help") {
-
-        return interaction.reply({
-            embeds: [
-                new EmbedBuilder()
-                    .setColor("#5865F2")
-                    .setTitle("📖 Commandes")
-                    .setDescription(`
-/rank
-/top
-/ping
-/help
-
-👑 Staff :
-/addxp
-/resetxp
-/giveaway
-/giveawayxp
-`)
-            ]
-        });
-    }
-
-    // ===== RANK =====
-
-    if (interaction.commandName === "rank") {
-
-        const xp =
-            await db.get(
-                `xp_${interaction.guild.id}_${interaction.user.id}`
-            ) || 0;
-
-        const level =
-            await db.get(
-                `level_${interaction.guild.id}_${interaction.user.id}`
-            ) || 0;
-
-        const embed =
-            new EmbedBuilder()
-                .setColor("#5865F2")
-                .setTitle(`📊 Niveau de ${interaction.user.username}`)
-                .setDescription(`
-⭐ Niveau : ${level}
-✨ XP : ${xp}
-`);
-
-        return interaction.reply({
-            embeds: [embed]
-        });
-    }
-
-    // ===== TOP =====
-
-    if (interaction.commandName === "top") {
-
-        const all =
-            await db.all();
-
-        const xpUsers =
-            all.filter(data =>
-                data.id.startsWith(
-                    `xp_${interaction.guild.id}_`
-                )
-            );
-
-        const sorted =
-            xpUsers.sort(
-                (a, b) => b.value - a.value
-            ).slice(0, 10);
-
-        let desc = "";
-
-        for (let i = 0; i < sorted.length; i++) {
-
-            const userId =
-                sorted[i].id.split("_")[2];
-
-            const user =
-                await client.users.fetch(userId)
-                    .catch(() => null);
-
-            if (!user) continue;
-
-            desc += `🏅 #${i + 1} • ${user.username} — ${sorted[i].value} XP\n`;
+            interaction.reply({
+                embeds: [embed]
+            });
         }
 
-        const embed =
-            new EmbedBuilder()
-                .setColor("#FFD700")
-                .setTitle("🏆 Classement XP")
-                .setDescription(
-                    desc || "Aucun joueur."
-                );
+        // ================= TOP =================
 
-        return interaction.reply({
-            embeds: [embed]
-        });
-    }
+        if (
+            interaction.commandName ===
+            "top"
+        ) {
 
-    // ===== STAFF CHECK =====
+            const all =
+                await db.all();
 
-    const member = interaction.member;
+            const xpData = all
+                .filter(data =>
+                    data.id.startsWith(
+                        `xp_${interaction.guild.id}`
+                    )
+                )
+                .sort(
+                    (a, b) =>
+                        b.value -
+                        a.value
+                )
+                .slice(0, 10);
 
-    if (
-        !member.roles.cache.has(STAFF_ROLE_ID)
-    ) {
+            let leaderboard = "";
 
-        return interaction.reply({
-            content:
-                "❌ Tu n'as pas la permission.",
-            ephemeral: true
-        });
-    }
+            for (
+                let i = 0;
+                i < xpData.length;
+                i++
+            ) {
 
-    // ===== ADDXP =====
+                const data =
+                    xpData[i];
 
-    if (interaction.commandName === "addxp") {
+                const userId =
+                    data.id.split(
+                        "_"
+                    )[2];
 
-        const target =
-            interaction.options.getUser(
-                "membre"
-            );
+                const user =
+                    await client.users.fetch(
+                        userId
+                    )
+                        .catch(
+                            () => null
+                        );
 
-        const amount =
-            interaction.options.getInteger(
-                "xp"
-            );
+                if (!user)
+                    continue;
 
-        const memberTarget =
-            interaction.guild.members.cache.get(
-                target.id
-            );
-
-        await addXP(
-            memberTarget,
-            amount
-        );
-
-        return interaction.reply({
-            content:
-                `✅ ${amount} XP ajoutés à ${target}`
-        });
-    }
-
-    // ===== RESETXP =====
-
-    if (interaction.commandName === "resetxp") {
-
-        const target =
-            interaction.options.getUser(
-                "membre"
-            );
-
-        await db.set(
-            `xp_${interaction.guild.id}_${target.id}`,
-            0
-        );
-
-        await db.set(
-            `level_${interaction.guild.id}_${target.id}`,
-            0
-        );
-
-        return interaction.reply({
-            content:
-                `✅ XP reset pour ${target}`
-        });
-    }
-
-    // ===== GIVEAWAY =====
-
-    if (interaction.commandName === "giveaway") {
-
-        const prix =
-            interaction.options.getString(
-                "prix"
-            );
-
-        const temps =
-            interaction.options.getInteger(
-                "temps"
-            );
-
-        const embed =
-            new EmbedBuilder()
-                .setColor("#ff0000")
-                .setTitle("🎉 GIVEAWAY")
-                .setDescription(`
-🎁 Prix : ${prix}
-
-⏰ Durée : ${temps} minutes
-
-🎉 Réagis avec 🎉 !
-`);
-
-        const msg =
-            await interaction.reply({
-                embeds: [embed],
-                fetchReply: true
-            });
-
-        await msg.react("🎉");
-
-        setTimeout(async () => {
-
-            const fetched =
-                await msg.fetch();
-
-            const reaction =
-                fetched.reactions.cache.get("🎉");
-
-            if (!reaction) return;
-
-            const users =
-                await reaction.users.fetch();
-
-            const filtered =
-                users.filter(
-                    u => !u.bot
-                );
-
-            const winner =
-                filtered.random();
-
-            if (!winner) {
-
-                return interaction.followUp({
-                    content:
-                        "❌ Aucun participant."
-                });
+                leaderboard +=
+                    `🏅 #${i + 1} • ${user.username} — ${data.value} XP\n`;
             }
 
-            interaction.followUp({
+            if (!leaderboard) {
+
+                leaderboard =
+                    "❌ Aucun joueur dans le classement.";
+            }
+
+            const embed =
+                new EmbedBuilder()
+                    .setColor(
+                        "#5865F2"
+                    )
+                    .setTitle(
+                        "🏆 Classement XP"
+                    )
+                    .setDescription(
+                        leaderboard
+                    );
+
+            interaction.reply({
+                embeds: [embed]
+            });
+        }
+
+        // ================= PING =================
+
+        if (
+            interaction.commandName ===
+            "ping"
+        ) {
+
+            interaction.reply({
                 content:
-                    `🎉 Gagnant : ${winner}`
+                    `🏓 Pong : ${client.ws.ping}ms`
             });
+        }
 
-        }, temps * 60 * 1000);
-    }
+        // ================= HELP =================
 
-    // ===== GIVEAWAY XP =====
+        if (
+            interaction.commandName ===
+            "help"
+        ) {
 
-    if (interaction.commandName === "giveawayxp") {
+            const embed =
+                new EmbedBuilder()
+                    .setColor(
+                        "#5865F2"
+                    )
+                    .setTitle(
+                        "📚 Commandes"
+                    )
+                    .setDescription(`
+\`/rank\` → Voir ton niveau
+\`/top\` → Classement XP
+\`/ping\` → Voir le ping
+\`/help\` → Voir les commandes
+\`/addxp\` → Ajouter de l'xp
+\`/resetxp\` → Reset l'xp
+                    `);
 
-        const xp =
-            interaction.options.getInteger(
-                "xp"
-            );
-
-        const temps =
-            interaction.options.getInteger(
-                "temps"
-            );
-
-        const embed =
-            new EmbedBuilder()
-                .setColor("#00ff99")
-                .setTitle("🎉 GIVEAWAY XP")
-                .setDescription(`
-✨ XP : ${xp}
-
-⏰ Durée : ${temps} minutes
-
-🎉 Réagis avec 🎉 !
-`);
-
-        const msg =
-            await interaction.reply({
-                embeds: [embed],
-                fetchReply: true
+            interaction.reply({
+                embeds: [embed]
             });
+        }
 
-        await msg.react("🎉");
+        // ================= ADDXP =================
 
-        setTimeout(async () => {
+        if (
+            interaction.commandName ===
+            "addxp"
+        ) {
 
-            const fetched =
-                await msg.fetch();
+            if (
+                !interaction.member.roles.cache.has(
+                    STAFF_ROLE_ID
+                )
+            ) {
 
-            const reaction =
-                fetched.reactions.cache.get("🎉");
-
-            if (!reaction) return;
-
-            const users =
-                await reaction.users.fetch();
-
-            const filtered =
-                users.filter(
-                    u => !u.bot
-                );
-
-            const winner =
-                filtered.random();
-
-            if (!winner) {
-
-                return interaction.followUp({
+                return interaction.reply({
                     content:
-                        "❌ Aucun participant."
+                        "❌ Tu n'as pas la permission.",
+                    ephemeral: true
                 });
             }
 
-            const memberWinner =
-                interaction.guild.members.cache.get(
-                    winner.id
+            const member =
+                interaction.options.getMember(
+                    "membre"
+                );
+
+            const amount =
+                interaction.options.getInteger(
+                    "xp"
                 );
 
             await addXP(
-                memberWinner,
-                xp
+                member,
+                amount
             );
 
-            interaction.followUp({
+            interaction.reply({
                 content:
-                    `🎉 ${winner} gagne ${xp} XP`
+                    `✅ ${amount} XP ajouté à ${member}`
             });
+        }
 
-        }, temps * 60 * 1000);
+        // ================= RESETXP =================
+
+        if (
+            interaction.commandName ===
+            "resetxp"
+        ) {
+
+            if (
+                !interaction.member.roles.cache.has(
+                    STAFF_ROLE_ID
+                )
+            ) {
+
+                return interaction.reply({
+                    content:
+                        "❌ Tu n'as pas la permission.",
+                    ephemeral: true
+                });
+            }
+
+            const member =
+                interaction.options.getMember(
+                    "membre"
+                );
+
+            await db.set(
+                `xp_${interaction.guild.id}_${member.id}`,
+                0
+            );
+
+            await db.set(
+                `level_${interaction.guild.id}_${member.id}`,
+                0
+            );
+
+            interaction.reply({
+                content:
+                    `✅ XP reset pour ${member}`
+            });
+        }
     }
-
-});
+);
 
 // ================= LOGIN =================
 

@@ -134,7 +134,7 @@ client.on("messageCreate", async (message) => {
         cooldown.delete(message.author.id);
     }, 3000);
 
-    await addXP(message.member, 10);
+    await addXP(message.member, 25);
 });
 
 // ================= REACTION XP =================
